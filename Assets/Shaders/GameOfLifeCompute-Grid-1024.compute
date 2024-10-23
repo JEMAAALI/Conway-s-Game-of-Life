@@ -1,0 +1,81 @@
+// GameOfLifeCompute.compute
+#pragma kernel CSMain
+
+#define WIDTH 1024
+#define HEIGHT 1024
+
+RWTexture2D<float4> Result;    // RGBA texture to store the new state
+Texture2D<float4> CurrentState;// RGBA texture to read the current state
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    int x = id.x;
+    int y = id.y;
+
+    if (x >= WIDTH || y >= HEIGHT)
+        return;
+
+    // Get the current cell state (alive or dead)
+    float4 currentCell = CurrentState[id.xy];
+    int alive = (currentCell.r > 0.5) ? 1 : 0;
+    float age = currentCell.g; // Read the age of the cell
+
+    // Count live neighbors
+    int liveNeighbors = 0;
+    for (int i = -1; i <= 1; ++i)
+    {
+        for (int j = -1; j <= 1; ++j)
+        {
+            if (i == 0 && j == 0)
+                continue;
+
+            int nx = (x + i + WIDTH) % WIDTH;
+            int ny = (y + j + HEIGHT) % HEIGHT;
+
+            float4 neighbor = CurrentState[int2(nx, ny)];
+            liveNeighbors += (neighbor.r > 0.5) ? 1 : 0;
+        }
+    }
+
+    // Apply the rules of the Game of Life
+    float4 newState = float4(0, 0, 0, 1); // Dead by default
+    if (alive == 1 && (liveNeighbors == 2 || liveNeighbors == 3))
+    {
+        newState.r = 1.0; // Stay alive
+        newState.g = age + 1; // Increase age
+        newState.b = liveNeighbors / 8.0; // Normalize neighbor count for color intensity
+        newState.a = 1.0; // Alpha channel
+    }
+    else if (alive == 0 && liveNeighbors == 3)
+    {
+        newState.r = 1.0; // Come to life
+        newState.g = 0.0; // Start new age from zero
+        newState.b = liveNeighbors / 8.0; // Set color based on number of neighbors
+        newState.a = 1.0;
+    }
+
+    // Write the new state to the Result texture
+    Result[id.xy] = newState;
+}
+
+
+#pragma kernel AddCells
+
+RWTexture2D<float4> NextState;
+
+int mouseX;
+int mouseY;
+int brushSize;
+
+[numthreads(8, 8, 1)]
+void AddCells(uint3 id : SV_DispatchThreadID)
+{
+    int x = id.x + mouseX - brushSize / 2;
+    int y = id.y + mouseY - brushSize / 2;
+
+    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT)
+    {
+        NextState[int2(x, y)] = float4(1, 1, 1, 1); // Set to alive (white)
+    }
+}
